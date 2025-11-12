@@ -357,14 +357,14 @@ function getMonthName($monthNum) {
                              <div class="alert alert-danger d-flex align-items-center py-2" role="alert">
                                 <i class="bi bi-exclamation-triangle-fill me-2"></i>
                                 <div>
-                                    **Atenção!** Você tem contas vencidas no valor de R$ <?php echo number_format($totVencidas, 2, ',', '.'); ?>
+                                    Atenção! Você tem contas vencidas no valor de R$ <?php echo number_format($totVencidas, 2, ',', '.'); ?>
                                 </div>
                             </div>
                         <?php else: ?>
                             <div class="alert alert-success d-flex align-items-center py-2" role="alert">
                                 <i class="bi bi-check-circle-fill me-2"></i>
                                 <div>
-                                    **Tudo em dia!** Não há contas para vencer nos próximos dias.
+                                    Tudo em dia! Não há contas para vencer nos próximos dias.
                                 </div>
                             </div>
                         <?php endif; ?>

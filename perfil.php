@@ -456,14 +456,18 @@ function getTextColor($bgColor) {
                     <label for="nome_categoria" class="form-label">Nome da Categoria</label>
                     <input name="nome_categoria" id="nome_categoria" class="form-control" type="text" placeholder="Ex: Transporte, Lazer, Saúde" required>
                 </div>
-                <div class="col-12">
-                    <label for="cor_categoria" class="form-label">Cor (Código Hexadecimal)</label>
-                    <div class="input-group">
-                         <span class="input-group-text">#</span>
-                         <input name="cor_categoria" id="cor_categoria" class="form-control" type="text" maxlength="6" placeholder="Ex: 9370db (Roxo)">
-                    </div>
-                    <small class="form-text text-muted">Deixe em branco para usar a cor padrão (Roxo).</small>
-                </div>
+        <div class="col-12">
+          <label class="form-label">Cor da Categoria</label>
+          <?php $perfilColorOptions = ['8B5CF6','10B981','F59E0B','EF4444','3B82F6','EC4899','14B8A6','6B7280']; ?>
+          <div class="d-flex gap-2 flex-wrap mb-2" id="colorSwatches">
+            <?php foreach ($perfilColorOptions as $i => $pc): ?>
+              <button type="button" class="swatch-btn" data-color="<?php echo $pc; ?>" aria-label="Selecionar cor #<?php echo $pc; ?>" title="#<?php echo $pc; ?>" style="width:40px;height:40px;border-radius:9999px;border:2px solid transparent;background-color: #<?php echo $pc; ?>;padding:0;">
+              </button>
+            <?php endforeach; ?>
+          </div>
+          <input type="hidden" name="cor_categoria" id="cor_categoria" value="<?php echo $perfilColorOptions[0]; ?>">
+          <small class="form-text text-muted">Escolha uma cor pré-definida. Se não selecionar, será usada a cor padrão (roxo).</small>
+        </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
@@ -477,5 +481,33 @@ function getTextColor($bgColor) {
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  <script>
+    // Script para comportamento dos swatches de cor no modal de categorias
+    (function(){
+      const container = document.getElementById('colorSwatches');
+      if (!container) return;
+      const buttons = container.querySelectorAll('.swatch-btn');
+      const hidden = document.getElementById('cor_categoria');
+      // Marca primeiro como selecionado por padrão
+      if (buttons.length && hidden && !hidden.value) {
+        hidden.value = buttons[0].dataset.color || '';
+      }
+      function clearSelected(){
+        buttons.forEach(b => b.style.borderColor = 'transparent');
+      }
+      buttons.forEach(b => {
+        // set default selected if matches hidden value
+        if (hidden && hidden.value && hidden.value.toLowerCase() === (b.dataset.color || '').toLowerCase()) {
+          b.style.borderColor = '#000000';
+        }
+        b.addEventListener('click', function(){
+          if (!hidden) return;
+          clearSelected();
+          b.style.borderColor = '#000000';
+          hidden.value = b.dataset.color || '';
+        });
+      });
+    })();
+  </script>
 </body>
 </html>
