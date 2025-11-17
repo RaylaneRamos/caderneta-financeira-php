@@ -29,7 +29,6 @@ $hoje = date('Y-m-d');
 
 
 // --- 2. Tratamento de Adicionar/Excluir/Toggle Status (POST) ---
-// APENAS LÓGICA DE DESPESAS FOI MANTIDA
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Adicionar Despesa (Saída)
     if (isset($_POST['add_type']) && $_POST['add_type'] === 'saida') {
@@ -38,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $descricao = trim($_POST['descricao']);
         $data = $_POST['data'] ?: date('Y-m-d');
         
-        if ($valor > 0) {
+        if ($valor > 0 && !empty($categoria)) {
             $stmt = $pdo->prepare('INSERT INTO saidas (usuario_id, valor, categoria, descricao, data, status) VALUES (?, ?, ?, ?, ?, ?)');
             $stmt->execute([$user_id, $valor, $categoria, $descricao, $data, 'A Pagar']); 
         }
@@ -46,14 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     
-    // Deletar Despesa (Saída) - CORRIGIDO
+    // Deletar Despesa (Saída)
     if (isset($_POST['delete']) && isset($_POST['id'])) {
         $id = intval($_POST['id']);
-        
-        // Assumimos que é SAIDA, pois ENTRADA foi removida do Dashboard.
         $stmt = $pdo->prepare('DELETE FROM saidas WHERE id = ? AND usuario_id = ?');
         $stmt->execute([$id, $user_id]);
-        
         header('Location: dashboard.php?month='.$currentMonth.'&year='.$currentYear);
         exit;
     }
@@ -74,12 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// --- 3. Busca de Totais e Listas (TUDO BASEADO EM RECEITA RECORRENTE) ---
+// --- 3. Busca de Totais e Listas ---
 
 // 1. Total de Receitas RECORRENTES (única fonte de entrada)
 $stmtReceitaRecorrente = $pdo->prepare('SELECT COALESCE(SUM(valor_padrao), 0) AS s FROM receitas_recorrentes WHERE usuario_id = ?');
 $stmtReceitaRecorrente->execute([$user_id]);
-$entradasParaCalculo = $stmtReceitaRecorrente->fetch()['s']; // Este é o nosso novo Total de Entradas
+$entradasParaCalculo = $stmtReceitaRecorrente->fetch()['s']; 
 
 // Total de Saídas (Despesas) no Mês (Independentemente do status de pagamento)
 $stmtTotSaidasMes = $pdo->prepare('SELECT COALESCE(SUM(valor), 0) AS s FROM saidas WHERE usuario_id = ? AND data BETWEEN ? AND ?');
@@ -88,7 +84,7 @@ $totSaidasMes = $stmtTotSaidasMes->fetch()['s'];
 
 // Saldo Previsto (Receita Recorrente - Saídas Mês)
 $saldoPrevisto = $entradasParaCalculo - $totSaidasMes;
-$saldoDia = $saldoPrevisto; // Simplificamos o Saldo do Dia para ser igual ao Previsto
+$saldoDia = $saldoPrevisto; 
 
 
 // Total de Saídas PAGAS (Contagem de despesas pagas no mês)
@@ -135,6 +131,7 @@ if ($totSaidasMes > 0) {
     }
 }
 
+
 // Cálculo Percentual: Receita x Despesas
 $percentReceitaXDespesa = ($entradasParaCalculo > 0) ? round(($totSaidasMes / $entradasParaCalculo) * 100) : 0;
 $percentReceitaXDespesa = min(100, $percentReceitaXDespesa);
@@ -145,10 +142,11 @@ $stmtUser = $pdo->prepare('SELECT name, email FROM usuarios WHERE id = ? LIMIT 1
 $stmtUser->execute([$user_id]);
 $user = $stmtUser->fetch();
 
-// --- NOVO: Buscar Categorias Cadastradas para o Modal de Adicionar Despesa ---
-$stmtCategoriasDisp = $pdo->prepare('SELECT nome FROM categorias WHERE usuario_id = ? ORDER BY nome ASC');
+// --- ATUALIZADO: Buscar Categorias com NOME e COR para o Modal ---
+$stmtCategoriasDisp = $pdo->prepare('SELECT nome, cor_hex FROM categorias WHERE usuario_id = ? ORDER BY nome ASC');
 $stmtCategoriasDisp->execute([$user_id]);
-$categoriasDisponiveis = $stmtCategoriasDisp->fetchAll(PDO::FETCH_COLUMN); // Apenas os nomes das categorias
+// Usamos fetchAll() sem FETCH_COLUMN para pegar as duas colunas
+$categoriasDisponiveis = $stmtCategoriasDisp->fetchAll(PDO::FETCH_ASSOC); 
 // --------------------------------------------------------------------------
 
 // Função auxiliar para nomes dos meses
@@ -159,6 +157,29 @@ function getMonthName($monthNum) {
         '09' => 'Setembro', '10' => 'Outubro', '11' => 'Novembro', '12' => 'Dezembro'
     ];
     return $months[$monthNum] ?? 'Mês Inválido';
+}
+
+// NOVO: Função auxiliar para determinar a cor do texto (copiado do perfil.php)
+function getTextColor($bgColor) {
+    if (empty($bgColor)) return 'text-dark';
+    
+    // Converte a cor hexadecimal para RGB
+    $hex = str_replace('#', '', $bgColor);
+    if (strlen($hex) == 3) {
+        $r = hexdec(substr($hex, 0, 1) . substr($hex, 0, 1));
+        $g = hexdec(substr($hex, 1, 1) . substr($hex, 1, 1));
+        $b = hexdec(substr($hex, 2, 1) . substr($hex, 2, 1));
+    } else {
+        $r = hexdec(substr($hex, 0, 2));
+        $g = hexdec(substr($hex, 2, 2));
+        $b = hexdec(substr($hex, 4, 2));
+    }
+    
+    // Calcula o brilho (Luminosidade perceptiva)
+    $brightness = ($r * 299 + $g * 587 + $b * 114) / 1000;
+    
+    // Retorna branco para cores escuras e preto para cores claras
+    return ($brightness > 180) ? 'text-dark' : 'text-white';
 }
 ?>
 
@@ -228,6 +249,41 @@ function getMonthName($monthNum) {
     .chart-color-2 { background-color: #ffcc00; } /* Amarelo */
     .chart-color-3 { background-color: #00bcd4; } /* Ciano */
     .chart-color-4 { background-color: #4CAF50; } /* Verde */
+
+    /* --- ESTILOS REFINADOS PARA OS BLOCOS DE CATEGORIA (Modal) --- */
+    .category-block {
+        display: inline-flex;
+        align-items: center;
+        /* Reduzindo o padding para blocos menores */
+        padding: 0.3rem 0.7rem; 
+        border-radius: 0.5rem; /* Bordas mais suaves */
+        margin: 0.2rem; /* Margem menor para agrupamento */
+        cursor: pointer;
+        font-weight: 500; /* Peso de fonte menor */
+        font-size: 0.85rem; /* Fonte menor */
+        white-space: nowrap; 
+        transition: transform 0.1s, opacity 0.1s, box-shadow 0.1s, border 0.1s; 
+        border: 1px solid transparent; /* Borda fina transparente para harmonia */
+    }
+    .category-block:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+    }
+    .category-block.selected {
+        /* Borda de destaque mais fina e sutil */
+        border: 2px solid #6c5ce7; 
+        box-shadow: 0 2px 6px rgba(108, 92, 231, 0.2); 
+        opacity: 1;
+        transform: scale(1.02);
+    }
+
+    /* Estilização da Box que contém os blocos no modal */
+    #categoria-selection-container {
+        border: 1px solid #dee2e6; /* Borda sutil como a do form-control */
+        border-radius: 0.5rem;
+        padding: 0.5rem; 
+        background-color: #ffffff;
+    }
   </style>
 </head>
 <body>
@@ -465,44 +521,53 @@ function getMonthName($monthNum) {
   </main>
 
   <div class="modal fade" id="addDespesaModal" tabindex="-1" aria-labelledby="addDespesaModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog"> 
       <div class="modal-content">
         <div class="modal-header bg-light-purple border-bottom-0">
           <h5 class="modal-title" id="addDespesaModalLabel">Adicionar Nova Despesa</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <form method="post" action="">
+        <form method="post" action="" id="formAddDespesa">
             <input type="hidden" name="add_type" value="saida"> 
-            <div class="modal-body row g-3">
-                
-                <div class="col-6">
-                    <label for="valor_saida" class="form-label">Valor (R$)</label>
-                    <input name="valor" id="valor_saida" class="form-control" type="text" placeholder="Ex: 50.00" required>
-                </div>
-                <div class="col-6">
-                    <label for="data_saida" class="form-label">Data de Vencimento</label>
-                    <input name="data" id="data_saida" class="form-control" type="date" value="<?php echo date('Y-m-d'); ?>">
-                </div>
+            <input type="hidden" name="categoria" id="categoria_input_hidden" value=""> <div class="modal-body row g-3">
                 
                 <div class="col-12">
-                    <label for="categoria_saida" class="form-label">Categoria</label>
-                    <select name="categoria" id="categoria_saida" class="form-select" required>
-                        <option value="" disabled selected>Selecione uma categoria</option>
+                    <label for="descricao_saida" class="form-label">1. Descrição (Nome da conta)</label>
+                    <input name="descricao" id="descricao_saida" class="form-control" type="text" placeholder="Ex: Conta de Luz / Aluguel" required>
+                </div>
+
+                <div class="col-12 mb-3">
+                    <label class="form-label">2. Selecione a Categoria</label>
+                    <div id="categoria-selection-container" class="d-flex flex-wrap">
                         <?php if (!empty($categoriasDisponiveis)): ?>
-                            <?php foreach ($categoriasDisponiveis as $catNome): ?>
-                                <option value="<?php echo htmlspecialchars($catNome); ?>">
-                                    <?php echo htmlspecialchars($catNome); ?>
-                                </option>
+                            <?php foreach ($categoriasDisponiveis as $cat): 
+                                $cor = htmlspecialchars($cat['cor_hex'] ?? '#9370db');
+                                $textColorClass = getTextColor($cor);
+                            ?>
+                                <div 
+                                    class="category-block <?php echo $textColorClass; ?>" 
+                                    style="background-color: <?php echo $cor; ?>;"
+                                    data-category-name="<?php echo htmlspecialchars($cat['nome']); ?>"
+                                    title="<?php echo htmlspecialchars($cat['nome']); ?>"
+                                >
+                                    <?php echo htmlspecialchars($cat['nome']); ?>
+                                </div>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <option value="" disabled>Nenhuma categoria cadastrada</option>
+                            <div class="alert alert-warning small w-100 mb-0">
+                                Nenhuma categoria cadastrada. Cadastre-as no <a href="perfil.php" target="_blank">Perfil</a>.
+                            </div>
                         <?php endif; ?>
-                    </select>
+                    </div>
                 </div>
                 
-                <div class="col-12">
-                    <label for="descricao_saida" class="form-label">Descrição (Nome da conta)</label>
-                    <input name="descricao" id="descricao_saida" class="form-control" type="text" placeholder="Ex: Conta de Luz / Aluguel">
+                <div class="col-6">
+                    <label for="valor_saida" class="form-label">3. Valor (R$)</label>
+                    <input name="valor" id="valor_saida" class="form-control" type="text" placeholder="Ex: 50,00" required>
+                </div>
+                <div class="col-6">
+                    <label for="data_saida" class="form-label">4. Data de Vencimento</label>
+                    <input name="data" id="data_saida" class="form-control" type="date" value="<?php echo date('Y-m-d'); ?>">
                 </div>
                 
             </div>
@@ -519,5 +584,63 @@ function getMonthName($monthNum) {
 
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const categoryBlocks = document.querySelectorAll('.category-block');
+        const hiddenInput = document.getElementById('categoria_input_hidden');
+        const form = document.getElementById('formAddDespesa');
+
+        // Seletor para aplicar o efeito de seleção nos blocos
+        categoryBlocks.forEach(block => {
+            block.addEventListener('click', function() {
+                // 1. Limpa a seleção de todos os blocos
+                categoryBlocks.forEach(b => b.classList.remove('selected'));
+
+                // 2. Marca o bloco clicado
+                this.classList.add('selected');
+
+                // 3. Define o valor no campo hidden para o PHP
+                hiddenInput.value = this.getAttribute('data-category-name');
+            });
+        });
+
+        // Garantir que a seleção seja obrigatória antes de enviar
+        form.addEventListener('submit', function(e) {
+            if (!hiddenInput.value) {
+                alert('Por favor, selecione uma categoria na Etapa 2.');
+                e.preventDefault();
+            }
+        });
+        
+        // Marcar a primeira categoria por padrão ao abrir o modal (Melhora a UX)
+        const addDespesaModal = document.getElementById('addDespesaModal');
+        if (addDespesaModal) {
+             addDespesaModal.addEventListener('shown.bs.modal', function () {
+                // Se nenhum valor estiver selecionado e houver categorias disponíveis, clique no primeiro bloco.
+                if (categoryBlocks.length > 0 && !hiddenInput.value) {
+                    categoryBlocks[0].click(); 
+                }
+             });
+        }
+
+        // Função para formatar o campo de valor para R$ (opcional, mas melhora a UX)
+        const valorInput = document.getElementById('valor_saida');
+        if (valorInput) {
+            valorInput.addEventListener('input', function(e) {
+                let value = e.target.value;
+                // Remove tudo que não for dígito e ponto/vírgula
+                value = value.replace(/[^\d,.]/g, ''); 
+
+                // Troca ponto por vírgula se for o único separador
+                if (value.indexOf('.') !== -1 && value.indexOf(',') === -1) {
+                    value = value.replace('.', ',');
+                }
+                
+                e.target.value = value;
+            });
+        }
+    });
+  </script>
 </body>
 </html>
