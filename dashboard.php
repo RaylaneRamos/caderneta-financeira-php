@@ -135,7 +135,6 @@ if ($totSaidasMes > 0) {
     }
 }
 
-
 // Cálculo Percentual: Receita x Despesas
 $percentReceitaXDespesa = ($entradasParaCalculo > 0) ? round(($totSaidasMes / $entradasParaCalculo) * 100) : 0;
 $percentReceitaXDespesa = min(100, $percentReceitaXDespesa);
@@ -145,6 +144,12 @@ $percentReceitaXDespesa = min(100, $percentReceitaXDespesa);
 $stmtUser = $pdo->prepare('SELECT name, email FROM usuarios WHERE id = ? LIMIT 1');
 $stmtUser->execute([$user_id]);
 $user = $stmtUser->fetch();
+
+// --- NOVO: Buscar Categorias Cadastradas para o Modal de Adicionar Despesa ---
+$stmtCategoriasDisp = $pdo->prepare('SELECT nome FROM categorias WHERE usuario_id = ? ORDER BY nome ASC');
+$stmtCategoriasDisp->execute([$user_id]);
+$categoriasDisponiveis = $stmtCategoriasDisp->fetchAll(PDO::FETCH_COLUMN); // Apenas os nomes das categorias
+// --------------------------------------------------------------------------
 
 // Função auxiliar para nomes dos meses
 function getMonthName($monthNum) {
@@ -355,17 +360,17 @@ function getMonthName($monthNum) {
                     <div class="col-12 mt-3">
                         <?php if ($totVencidas > 0): ?>
                              <div class="alert alert-danger d-flex align-items-center py-2" role="alert">
-                                <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                                <div>
-                                    Atenção! Você tem contas vencidas no valor de R$ <?php echo number_format($totVencidas, 2, ',', '.'); ?>
-                                </div>
+                                 <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                 <div>
+                                     Atenção! Você tem contas vencidas no valor de R$ <?php echo number_format($totVencidas, 2, ',', '.'); ?>
+                                 </div>
                             </div>
                         <?php else: ?>
                             <div class="alert alert-success d-flex align-items-center py-2" role="alert">
-                                <i class="bi bi-check-circle-fill me-2"></i>
-                                <div>
-                                    Tudo em dia! Não há contas para vencer nos próximos dias.
-                                </div>
+                                 <i class="bi bi-check-circle-fill me-2"></i>
+                                 <div>
+                                     Tudo em dia! Não há contas para vencer nos próximos dias.
+                                 </div>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -469,10 +474,37 @@ function getMonthName($monthNum) {
         <form method="post" action="">
             <input type="hidden" name="add_type" value="saida"> 
             <div class="modal-body row g-3">
-                <div class="col-6"><label for="valor_saida" class="form-label">Valor (R$)</label><input name="valor" id="valor_saida" class="form-control" type="text" placeholder="Ex: 50.00" required></div>
-                <div class="col-6"><label for="data_saida" class="form-label">Data de Vencimento</label><input name="data" id="data_saida" class="form-control" type="date" value="<?php echo date('Y-m-d'); ?>"></div>
-                <div class="col-12"><label for="categoria_saida" class="form-label">Categoria</label><input name="categoria" id="categoria_saida" class="form-control" type="text" placeholder="Ex: Alimentação" required></div>
-                <div class="col-12"><label for="descricao_saida" class="form-label">Descrição (Nome da conta)</label><input name="descricao" id="descricao_saida" class="form-control" type="text" placeholder="Ex: Conta de Luz / Aluguel"></div>
+                
+                <div class="col-6">
+                    <label for="valor_saida" class="form-label">Valor (R$)</label>
+                    <input name="valor" id="valor_saida" class="form-control" type="text" placeholder="Ex: 50.00" required>
+                </div>
+                <div class="col-6">
+                    <label for="data_saida" class="form-label">Data de Vencimento</label>
+                    <input name="data" id="data_saida" class="form-control" type="date" value="<?php echo date('Y-m-d'); ?>">
+                </div>
+                
+                <div class="col-12">
+                    <label for="categoria_saida" class="form-label">Categoria</label>
+                    <select name="categoria" id="categoria_saida" class="form-select" required>
+                        <option value="" disabled selected>Selecione uma categoria</option>
+                        <?php if (!empty($categoriasDisponiveis)): ?>
+                            <?php foreach ($categoriasDisponiveis as $catNome): ?>
+                                <option value="<?php echo htmlspecialchars($catNome); ?>">
+                                    <?php echo htmlspecialchars($catNome); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <option value="" disabled>Nenhuma categoria cadastrada</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+                
+                <div class="col-12">
+                    <label for="descricao_saida" class="form-label">Descrição (Nome da conta)</label>
+                    <input name="descricao" id="descricao_saida" class="form-control" type="text" placeholder="Ex: Conta de Luz / Aluguel">
+                </div>
+                
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
