@@ -75,33 +75,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // 1. Total de Receitas RECORRENTES (única fonte de entrada)
 $stmtReceitaRecorrente = $pdo->prepare('SELECT COALESCE(SUM(valor_padrao), 0) AS s FROM receitas_recorrentes WHERE usuario_id = ?');
 $stmtReceitaRecorrente->execute([$user_id]);
-$entradasParaCalculo = $stmtReceitaRecorrente->fetch()['s']; 
+$entradasParaCalculo = (float) ($stmtReceitaRecorrente->fetch()['s'] ?? 0.00); 
 
 // Total de Saídas (Despesas) no Mês (Independentemente do status de pagamento)
 $stmtTotSaidasMes = $pdo->prepare('SELECT COALESCE(SUM(valor), 0) AS s FROM saidas WHERE usuario_id = ? AND data BETWEEN ? AND ?');
 $stmtTotSaidasMes->execute([$user_id, $firstDayOfMonth, $lastDayOfMonth]);
-$totSaidasMes = $stmtTotSaidasMes->fetch()['s'];
+$totSaidasMes = (float) ($stmtTotSaidasMes->fetch()['s'] ?? 0.00);
 
 // Saldo Previsto (Receita Recorrente - Saídas Mês)
+// OBS: $saldoPrevisto continuará sendo a projeção considerando todas as saídas do mês (pagas ou não)
 $saldoPrevisto = $entradasParaCalculo - $totSaidasMes;
-$saldoDia = $saldoPrevisto; 
 
-
+// Saldo Realizado (Saldo do Mês) -> considerar apenas saídas PAGAS
 // Total de Saídas PAGAS (Contagem de despesas pagas no mês)
 $stmtTotSaidasPagas = $pdo->prepare('SELECT COALESCE(SUM(valor), 0) AS s FROM saidas WHERE usuario_id = ? AND status = ? AND data BETWEEN ? AND ?');
 $stmtTotSaidasPagas->execute([$user_id, 'Pago', $firstDayOfMonth, $lastDayOfMonth]);
-$totSaidasPagas = $stmtTotSaidasPagas->fetch()['s'];
+$totSaidasPagas = (float) ($stmtTotSaidasPagas->fetch()['s'] ?? 0.00);
+
+// Saldo Realizado = receita recorrente - saídas pagas (o que já impactou o caixa)
+$saldoRealizado = $entradasParaCalculo - $totSaidasPagas;
 
 // Total de Saídas A PAGAR no mês
 $stmtTotSaidasAPagar = $pdo->prepare('SELECT COALESCE(SUM(valor), 0) AS s FROM saidas WHERE usuario_id = ? AND status = ? AND data BETWEEN ? AND ?');
 $stmtTotSaidasAPagar->execute([$user_id, 'A Pagar', $firstDayOfMonth, $lastDayOfMonth]);
-$totSaidasAPagar = $stmtTotSaidasAPagar->fetch()['s'];
+$totSaidasAPagar = (float) ($stmtTotSaidasAPagar->fetch()['s'] ?? 0.00);
 
 // Total de Saídas Vencidas
 $hoje = date('Y-m-d');
-$stmtTotSaidasVencidas = $pdo->prepare('SELECT COALESCE(SUM(valor), 0) AS s FROM saidas WHERE usuario_id = ? AND status = ? AND data < ? AND data BETWEEN ? AND ?');
-$stmtTotSaidasVencidas->execute([$user_id, 'A Pagar', $hoje, $firstDayOfMonth, $lastDayOfMonth]);
-$totVencidas = $stmtTotSaidasVencidas->fetch()['s'];
+/*
+ * Aqui simplificamos: consideramos vencidas as 'A Pagar' com data < hoje,
+ * mas ainda dentro do mês filtrado (ou com data antes de hoje).
+ */
+$vencidas_end = (strtotime($hoje) > strtotime($lastDayOfMonth)) ? $lastDayOfMonth : date('Y-m-d', strtotime('-1 day'));
+$stmtTotSaidasVencidas = $pdo->prepare('SELECT COALESCE(SUM(valor), 0) AS s FROM saidas WHERE usuario_id = ? AND status = ? AND data BETWEEN ? AND ?');
+$stmtTotSaidasVencidas->execute([$user_id, 'A Pagar', $firstDayOfMonth, $vencidas_end]);
+$totVencidas = (float) ($stmtTotSaidasVencidas->fetch()['s'] ?? 0.00);
 
 // Lista de Saídas (Checklist de Despesas) no Mês
 $stmtSaidas = $pdo->prepare('SELECT * FROM saidas WHERE usuario_id = ? AND data BETWEEN ? AND ? ORDER BY data ASC');
@@ -370,10 +378,10 @@ function getTextColor($bgColor) {
         </div>
 
         <div class="col-6 col-lg-3">
-            <div class="card card-summary <?php echo ($saldoPrevisto >= 0) ? 'bg-summary-positive' : 'bg-summary-negative'; ?>">
+            <div class="card card-summary <?php echo ($saldoRealizado >= 0) ? 'bg-summary-positive' : 'bg-summary-negative'; ?>">
                 <div class="card-body p-3">
                     <div class="label small opacity-75">Saldo do Mês</div>
-                    <div class="value">R$ <?php echo number_format($saldoPrevisto, 2, ',', '.'); ?></div>
+                    <div class="value">R$ <?php echo number_format($saldoRealizado, 2, ',', '.'); ?></div>
                 </div>
             </div>
         </div>
